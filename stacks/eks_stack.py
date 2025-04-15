@@ -5,7 +5,7 @@ from aws_cdk.lambda_layer_kubectl_v32 import KubectlV32Layer
 from aws_cdk import aws_iam as iam
 
 class EksClusterStack(Stack):
-    def __init__(self, scope: Construct, id: str, **kwargs): 
+    def __init__(self, scope: Construct, id: str, control_plane_sg: ec2.SecurityGroup, **kwargs): 
         super().__init__(scope, id, **kwargs)
 
         vpc_id = self.node.try_get_context("vpc_id")
@@ -30,6 +30,7 @@ class EksClusterStack(Stack):
             vpc=vpc,
             vpc_subnets=[ec2.SubnetSelection(subnets=subnet_objs)],
             default_capacity=0,
+            security_group=control_plane_sg,
             kubectl_layer=kubectl_layer
         )
 

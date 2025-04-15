@@ -19,7 +19,7 @@ env = cdk.Environment(account=account, region=region)
 sg_stack = SecurityGroupStack(app, "SGStack", env=env)
 iam_stack = IamStack(app, "IAMStack", env=env)
 ecr_stack = EcrStack(app, "ECRStack", env=env)
-eks_stack = EksClusterStack(app, "EksClusterStack", env=env)
+eks_stack = EksClusterStack(app, "EksClusterStack", control_plane_sg=sg_stack.eks_sg, env=env)
 
 bastion_stack = BastionHostStack(
     app,

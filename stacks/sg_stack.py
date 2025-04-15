@@ -18,6 +18,8 @@ class SecurityGroupStack(Stack):
         )
 
         for port, desc in [(443, "TLS"), (8080, "EKS"), (80, "HTTP"), (22, "SSH")]:
-            sg.add_ingress_rule(ec2.Peer.ipv4("0.0.0.0/0"), ec2.Port.tcp(port), f"{desc} from VPC")
+            sg.add_ingress_rule(ec2.Peer.ipv4("172.0.0.0/8"), ec2.Port.tcp(port), f"{desc} from VPC")
 
         Tags.of(sg).add("Name", "allow-eks-access")
+
+        self.eks_sg = sg
