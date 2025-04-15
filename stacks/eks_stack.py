@@ -44,7 +44,12 @@ class EksClusterStack(Stack):
             labels={"data": self.node.try_get_context("environment")}
         )
 
-        self.bastion_role = iam.Role(self, "BastionEksAdminRole",
+        eks.CfnAddon(self, "VpcCniAddon",
+            addon_name="vpc-cni",
+            cluster_name=cluster.cluster_name
+        )
+
+        self.bastion_role = iam.Role(self, "EksBastionRole",
             assumed_by=iam.ServicePrincipal("ec2.amazonaws.com"),
             managed_policies=[
                 iam.ManagedPolicy.from_aws_managed_policy_name("AmazonSSMManagedInstanceCore"),
@@ -55,13 +60,8 @@ class EksClusterStack(Stack):
 
         cluster.aws_auth.add_role_mapping(
             self.bastion_role,
-            username="bastion-admin",
-            groups=["system:masters"]
-        )
-
-        eks.CfnAddon(self, "VpcCniAddon",
-            addon_name="vpc-cni",
-            cluster_name=cluster.cluster_name
+            groups=["system:masters"],
+            username="eks-bastion"
         )
 
         CfnOutput(self, "ClusterEndpoint", value=cluster.cluster_endpoint)

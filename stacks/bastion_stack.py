@@ -2,6 +2,7 @@ from aws_cdk import Stack
 from aws_cdk import aws_ec2 as ec2
 from constructs import Construct
 from aws_cdk import aws_iam as iam
+from aws_cdk.aws_iam import CfnInstanceProfile
 
 class BastionHostStack(Stack):
     def __init__(self, scope: Construct, id: str, bastion_role: iam.Role, **kwargs):
@@ -22,6 +23,7 @@ class BastionHostStack(Stack):
         user_data_script = ec2.UserData.for_linux()
         user_data_script.add_commands(
             "sudo yum update -y",
+            "sudo yum install -y unzip",
             "curl -LO \"https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl\"",
             "echo \"$(cat kubectl.sha256)  kubectl\" | sha256sum --check",
             "sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl",
@@ -37,11 +39,22 @@ class BastionHostStack(Stack):
         )
 
 
-        ec2.Instance(self, "BastionHost",
-            instance_type=ec2.InstanceType("t3.micro"),
+        instance_profile = CfnInstanceProfile(
+            self, "BastionInstanceProfile",
+            roles=[bastion_role.role_name]
+        )
+
+
+        instance = ec2.Instance(self, "BastionHost",
+            instance_type=ec2.InstanceType("t3.medium"),
             machine_image=ec2.MachineImage.latest_amazon_linux2(),
             vpc=vpc,
             security_group=bastion_sg,
             key_pair=ec2.KeyPair.from_key_pair_name(self, "MyKeyPair", ssh_key_name),
-            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC)
+            vpc_subnets=ec2.SubnetSelection(subnet_type=ec2.SubnetType.PUBLIC),
+            role=bastion_role,
+            user_data=user_data_script
         )
+
+        instance.instance.add_property_override("IamInstanceProfile", instance_profile.ref)
+        self.bastion_role = bastion_role

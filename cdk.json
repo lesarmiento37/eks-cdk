@@ -15,7 +15,7 @@
       ]
     },
     "context": {
-      "account": "",
+      "account": "730335195555",
       "environment": "data",
       "cluster_name": "data-ops-cluster",
       "cluster_version": "1.32",
@@ -23,8 +23,8 @@
       "eks_node_name": "data-ops-nodegroup",
       "node_disk": 20,
       "node_instance_type": ["t3.medium"],
-      "private_subnets_ids": ["subnet-00109bd53a62fee45","subnet-0ea78f6daf264cbe7","subnet-0d70321789d62fdcb"], 
-      "vpc_id": "vpc-0a43cc0fa0402bee6",
+      "private_subnets_ids": ["subnet-06ac703e6b90febb4","subnet-094b77f5bbe2f367d","subnet-0a1e7e63189f110d8"], 
+      "vpc_id": "vpc-0757040f68843f85a",
       "region": "us-east-1",
       "ssh_key_name": "DataOpsEks",
       "access_ip": "152.202.125.252/32",
