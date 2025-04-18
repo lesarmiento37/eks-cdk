@@ -1,8 +1,10 @@
-from aws_cdk import Stack, CfnOutput
+from aws_cdk import Stack, CfnOutput, Aws
 from aws_cdk import aws_ec2 as ec2, aws_eks as eks
 from constructs import Construct
 from aws_cdk.lambda_layer_kubectl_v32 import KubectlV32Layer
 from aws_cdk import aws_iam as iam
+from aws_cdk import Tags
+from aws_cdk import custom_resources as cr
 
 class EksClusterStack(Stack):
     def __init__(self, scope: Construct, id: str, control_plane_sg: ec2.SecurityGroup, **kwargs): 
@@ -64,6 +66,77 @@ class EksClusterStack(Stack):
             groups=["system:masters"],
             username="eks-bastion"
         )
+
+        cluster.open_id_connect_provider
+
+        alb_policy_statement_json = iam.PolicyDocument.from_json({
+            "Version": "2012-10-17",
+            "Statement": [
+                {
+                    "Effect": "Allow",
+                    "Action": [
+                        "elasticloadbalancing:*",
+                        "ec2:Describe*",
+                        "ec2:CreateSecurityGroup",
+                        "ec2:CreateTags",
+                        "ec2:AuthorizeSecurityGroupIngress",
+                        "ec2:RevokeSecurityGroupIngress",
+                        "ec2:DeleteSecurityGroup",
+                        "iam:CreateServiceLinkedRole",
+                        "cognito-idp:DescribeUserPoolClient"
+                    ],
+                    "Resource": "*"
+                }
+            ]
+        })
+
+        # Create IAM Role with the Policy
+        alb_sa = cluster.add_service_account("aws-load-balancer-controller",
+            name="aws-load-balancer-controller",
+            namespace="kube-system"
+        )
+
+        alb_sa.role.attach_inline_policy(iam.Policy(self, "ALBControllerPolicy", document=alb_policy_statement_json))
+
+        # Deploy Helm chart
+        cluster.add_helm_chart(
+            "AWSLoadBalancerController",
+            chart="aws-load-balancer-controller",
+            repository="https://aws.github.io/eks-charts",
+            namespace="kube-system",
+            values={
+                "clusterName": cluster.cluster_name,
+                "region": Aws.REGION,
+                "vpcId": cluster.vpc.vpc_id,
+                "serviceAccount": {
+                    "create": False,
+                    "name": "aws-load-balancer-controller"
+                },
+                "replicaCount": 1
+            }
+        )
+
+        for i, subnet_id in enumerate(subnets):
+            cr.AwsCustomResource(self, f"TagSubnet{i}",
+                on_create=cr.AwsSdkCall(
+                    service="EC2",
+                    action="createTags",
+                    parameters={
+                        "Resources": [subnet_id],
+                        "Tags": [
+                            {"Key": "kubernetes.io/role/elb", "Value": "1"},
+                            {"Key": f"kubernetes.io/cluster/{cluster_name}", "Value": "shared"}
+                        ]
+                    },
+                    physical_resource_id=cr.PhysicalResourceId.of(f"TagSubnet{i}")
+                ),
+                policy=cr.AwsCustomResourcePolicy.from_sdk_calls(
+                    resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE
+                )
+            )
+
+
+
 
         CfnOutput(self, "ClusterEndpoint", value=cluster.cluster_endpoint)
         CfnOutput(self, "ClusterCA", value=cluster.cluster_certificate_authority_data)
