@@ -34,5 +34,5 @@ bastion_stack.add_dependency(eks_stack)
 
 app.synth()
 
-#cdk bootstrap aws://975049963324/us-east-1
+#cdk bootstrap aws://account/us-east-1
 

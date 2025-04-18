@@ -15,7 +15,7 @@
       ]
     },
     "context": {
-      "account": "975049963324",
+      "account": "",
       "environment": "data",
       "cluster_name": "data-ops-cluster",
       "cluster_version": "1.32",
@@ -23,10 +23,10 @@
       "eks_node_name": "data-ops-nodegroup",
       "node_disk": 20,
       "node_instance_type": ["t3.medium"],
-      "private_subnets_ids": ["subnet-0c25534fb789160c3","subnet-02cc82b9a60747e51","subnet-0cc1354aaddd3886f","subnet-06ef3f4a98ed07270"], 
-      "vpc_id": "vpc-062b173fc4e25e0f5",
-      "region": "us-east-1",
-      "ssh_key_name": "DataOpsEks",
+      "private_subnets_ids": [""], 
+      "vpc_id": "",
+      "region": "us-west-2",
+      "ssh_key_name": "DataOpsEks2",
       "access_ip": "152.202.125.252/32",
       "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
       "@aws-cdk/core:checkSecretUsage": true,

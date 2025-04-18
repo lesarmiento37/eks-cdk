@@ -1,4 +1,4 @@
-from aws_cdk import Stack, CfnOutput, Aws
+from aws_cdk import Stack, CfnOutput, Aws, CfnJson
 from aws_cdk import aws_ec2 as ec2, aws_eks as eks
 from constructs import Construct
 from aws_cdk.lambda_layer_kubectl_v32 import KubectlV32Layer
@@ -36,7 +36,7 @@ class EksClusterStack(Stack):
             kubectl_layer=kubectl_layer
         )
 
-        cluster.add_nodegroup_capacity("DefaultNodeGroup",
+        nodegroup = cluster.add_nodegroup_capacity("DefaultNodeGroup",
             nodegroup_name=node_name,
             instance_types=[ec2.InstanceType(it) for it in node_types],
             desired_size=2,
@@ -45,6 +45,17 @@ class EksClusterStack(Stack):
             disk_size=node_disk,
             subnets=ec2.SubnetSelection(subnets=subnet_objs),
             labels={"data": self.node.try_get_context("environment")}
+        )
+
+        nodegroup.role.add_to_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "autoscaling:DescribeAutoScalingGroups",
+                    "autoscaling:SetDesiredCapacity",
+                    "autoscaling:TerminateInstanceInAutoScalingGroup",
+                ],
+                resources=["*"],
+            )
         )
 
         eks.CfnAddon(self, "VpcCniAddon",
@@ -134,6 +145,65 @@ class EksClusterStack(Stack):
                     resources=cr.AwsCustomResourcePolicy.ANY_RESOURCE
                 )
             )
+
+        # ────────────  Cluster Autoscaler  ────────────
+
+        sa_name = "cluster-autoscaler"
+        sa_ns   = "kube-system"
+
+        # 1) ServiceAccount + IAM role (CDK hace todo por ti)
+        autoscaler_sa = cluster.add_service_account(
+            "ClusterAutoscalerSA",
+            name      = sa_name,
+            namespace = sa_ns,
+        )
+
+        autoscaler_sa.role.attach_inline_policy(
+            iam.Policy(
+                self, "AutoscalerInlinePolicy",
+                document=iam.PolicyDocument(
+                    statements=[
+                        iam.PolicyStatement(
+                            actions=[
+                                "autoscaling:DescribeAutoScalingGroups",
+                                "autoscaling:DescribeAutoScalingInstances",
+                                "autoscaling:DescribeLaunchConfigurations",
+                                "autoscaling:DescribeTags",
+                                "autoscaling:SetDesiredCapacity",
+                                "autoscaling:TerminateInstanceInAutoScalingGroup",
+                                "ec2:DescribeLaunchTemplateVersions",
+                                "ec2:DescribeInstanceTypes",
+                                "ec2:DescribeInstances",
+                                "sts:*"
+                            ],
+                            resources=["*"],
+                        )
+                    ]
+                ),
+            )
+        )
+
+        cluster.add_helm_chart(
+            "ClusterAutoscaler",
+            chart      = "cluster-autoscaler",
+            repository = "https://kubernetes.github.io/autoscaler",
+            release    = "cluster-autoscaler",
+            namespace  = sa_ns,
+            values = {
+                "autoDiscovery": {"clusterName": cluster.cluster_name},
+                "awsRegion": Aws.REGION,
+                "serviceAccount": {
+                    "create": False,         
+                    "name": sa_name,
+                },
+                "extraArgs": {
+                    "balance-similar-node-groups": "true",
+                    "skip-nodes-with-local-storage": "false",
+                    "scan-interval": "10s",
+                },
+            },
+        )
+        # -------------------------------------------------------
 
 
 
