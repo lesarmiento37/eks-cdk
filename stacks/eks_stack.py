@@ -5,6 +5,8 @@ from aws_cdk.lambda_layer_kubectl_v32 import KubectlV32Layer
 from aws_cdk import aws_iam as iam
 from aws_cdk import Tags
 from aws_cdk import custom_resources as cr
+from helm.alb_controller import deploy_alb_controller
+from helm.cluster_autoscaler import deploy_cluster_autoscaler
 
 class EksClusterStack(Stack):
     def __init__(self, scope: Construct, id: str, control_plane_sg: ec2.SecurityGroup, **kwargs): 
@@ -80,52 +82,9 @@ class EksClusterStack(Stack):
 
         cluster.open_id_connect_provider
 
-        alb_policy_statement_json = iam.PolicyDocument.from_json({
-            "Version": "2012-10-17",
-            "Statement": [
-                {
-                    "Effect": "Allow",
-                    "Action": [
-                        "elasticloadbalancing:*",
-                        "ec2:Describe*",
-                        "ec2:CreateSecurityGroup",
-                        "ec2:CreateTags",
-                        "ec2:AuthorizeSecurityGroupIngress",
-                        "ec2:RevokeSecurityGroupIngress",
-                        "ec2:DeleteSecurityGroup",
-                        "iam:CreateServiceLinkedRole",
-                        "cognito-idp:DescribeUserPoolClient"
-                    ],
-                    "Resource": "*"
-                }
-            ]
-        })
+        deploy_alb_controller(self, cluster)
 
-        # Create IAM Role with the Policy
-        alb_sa = cluster.add_service_account("aws-load-balancer-controller",
-            name="aws-load-balancer-controller",
-            namespace="kube-system"
-        )
-
-        alb_sa.role.attach_inline_policy(iam.Policy(self, "ALBControllerPolicy", document=alb_policy_statement_json))
-
-        # Deploy Helm chart
-        cluster.add_helm_chart(
-            "AWSLoadBalancerController",
-            chart="aws-load-balancer-controller",
-            repository="https://aws.github.io/eks-charts",
-            namespace="kube-system",
-            values={
-                "clusterName": cluster.cluster_name,
-                "region": Aws.REGION,
-                "vpcId": cluster.vpc.vpc_id,
-                "serviceAccount": {
-                    "create": False,
-                    "name": "aws-load-balancer-controller"
-                },
-                "replicaCount": 1
-            }
-        )
+        #----########Tagger################
 
         for i, subnet_id in enumerate(subnets):
             cr.AwsCustomResource(self, f"TagSubnet{i}",
@@ -146,67 +105,7 @@ class EksClusterStack(Stack):
                 )
             )
 
-        # ────────────  Cluster Autoscaler  ────────────
-
-        sa_name = "cluster-autoscaler"
-        sa_ns   = "kube-system"
-
-        # 1) ServiceAccount + IAM role (CDK hace todo por ti)
-        autoscaler_sa = cluster.add_service_account(
-            "ClusterAutoscalerSA",
-            name      = sa_name,
-            namespace = sa_ns,
-        )
-
-        autoscaler_sa.role.attach_inline_policy(
-            iam.Policy(
-                self, "AutoscalerInlinePolicy",
-                document=iam.PolicyDocument(
-                    statements=[
-                        iam.PolicyStatement(
-                            actions=[
-                                "autoscaling:DescribeAutoScalingGroups",
-                                "autoscaling:DescribeAutoScalingInstances",
-                                "autoscaling:DescribeLaunchConfigurations",
-                                "autoscaling:DescribeTags",
-                                "autoscaling:SetDesiredCapacity",
-                                "autoscaling:TerminateInstanceInAutoScalingGroup",
-                                "ec2:DescribeLaunchTemplateVersions",
-                                "ec2:DescribeInstanceTypes",
-                                "ec2:DescribeInstances",
-                                "sts:*"
-                            ],
-                            resources=["*"],
-                        )
-                    ]
-                ),
-            )
-        )
-
-        cluster.add_helm_chart(
-            "ClusterAutoscaler",
-            chart      = "cluster-autoscaler",
-            repository = "https://kubernetes.github.io/autoscaler",
-            release    = "cluster-autoscaler",
-            namespace  = sa_ns,
-            values = {
-                "autoDiscovery": {"clusterName": cluster.cluster_name},
-                "awsRegion": Aws.REGION,
-                "serviceAccount": {
-                    "create": False,         
-                    "name": sa_name,
-                },
-                "extraArgs": {
-                    "balance-similar-node-groups": "true",
-                    "skip-nodes-with-local-storage": "false",
-                    "scan-interval": "10s",
-                },
-            },
-        )
-        # -------------------------------------------------------
-
-
-
+        deploy_cluster_autoscaler(self, cluster)
 
         CfnOutput(self, "ClusterEndpoint", value=cluster.cluster_endpoint)
         CfnOutput(self, "ClusterCA", value=cluster.cluster_certificate_authority_data)
